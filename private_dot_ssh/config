@@ -1,0 +1,18 @@
+# Personal GitHub — uses separate SSH key and host alias
+# Required for: git@github.com-personal:allentv/dotfiles.git
+Host github.com-personal
+    HostName github.com
+    User git
+    IdentityFile ~/.ssh/id_ed25519_personal
+    IdentitiesOnly yes
+
+# Default GitHub
+Host github.com
+    HostName github.com
+    User git
+    AddKeysToAgent yes
+    IdentityFile ~/.ssh/id_ed25519
+
+# Machine-specific SSH hosts (bastion, SSM, internal) should be added
+# locally in ~/.ssh/config.local and included below — not committed here.
+Include config.local

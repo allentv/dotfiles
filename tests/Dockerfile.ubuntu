@@ -1,0 +1,33 @@
+# Smoke-test image: Ubuntu LTS + chezmoi bootstrap
+# Usage: see tests/run.sh
+FROM ubuntu:24.04
+
+# Minimal deps chezmoi init needs before the setup script runs
+RUN apt-get update -y && \
+    apt-get install -y --no-install-recommends \
+      curl ca-certificates git sudo openssh-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create a non-root user (mirrors real user environments)
+RUN useradd -m -s /bin/bash testuser && \
+    echo "testuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+USER testuser
+WORKDIR /home/testuser
+
+# Copy the dotfiles repo into the image
+COPY --chown=testuser:testuser . /home/testuser/dotfiles
+
+# Copy the smoke-test chezmoi config (pre-fills prompts, no interaction)
+COPY --chown=testuser:testuser tests/chezmoi.yaml /home/testuser/.config/chezmoi/chezmoi.yaml
+
+# Install chezmoi
+RUN sh -c "$(curl -fsLS get.chezmoi.io)" -- -b /home/testuser/.local/bin
+
+ENV PATH="/home/testuser/.local/bin:$PATH"
+
+# Apply dotfiles from the local copy (no SSH / GitHub needed in CI)
+RUN chezmoi init --apply --source /home/testuser/dotfiles
+
+# Run smoke tests
+CMD ["/bin/bash", "-c", "bash /home/testuser/dotfiles/tests/verify.sh"]

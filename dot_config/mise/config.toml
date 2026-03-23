@@ -1,0 +1,27 @@
+[tools]
+# Languages — pinned to major version to avoid unexpected breaking changes.
+# Update the major version here deliberately when you're ready to upgrade.
+node = "lts"      # LTS channel is already stable by definition
+go = "1"          # tracks latest 1.x (won't jump to 2.x)
+rust = "stable"   # Rust's own stability channel, preferable to "latest"
+python = "3"      # tracks latest 3.x (won't jump to 4.x)
+
+# Package managers
+bun = "latest"
+pnpm = "latest"
+uv = "latest"        # fast Python package manager
+
+# Shell utilities
+bat = "latest"       # better cat
+delta = "latest"     # better git diff
+direnv = "latest"    # per-directory env vars
+duf = "latest"       # better df
+dust = "latest"      # better du
+eza = "latest"       # better ls
+fzf = "latest"       # fuzzy finder
+jq = "latest"        # JSON processor
+k9s = "latest"       # kubernetes TUI
+lazygit = "latest"   # git TUI
+ripgrep = "latest"   # better grep
+yq = "latest"        # YAML/JSON processor
+zoxide = "latest"    # better cd

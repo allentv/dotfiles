@@ -1,0 +1,58 @@
+# Enable Powerlevel10k instant prompt. Must stay at the top.
+if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
+  source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
+fi
+
+# History
+HISTSIZE=100000
+SAVEHIST=100000
+setopt HIST_IGNORE_ALL_DUPS   # don't record duplicates
+setopt HIST_FIND_NO_DUPS      # skip duplicates when searching
+setopt HIST_REDUCE_BLANKS     # trim extra whitespace
+setopt SHARE_HISTORY          # share history across all zsh sessions
+
+# Oh My Zsh
+export ZSH="$HOME/.oh-my-zsh"
+ZSH_THEME="powerlevel10k/powerlevel10k"
+plugins=(git zsh-autosuggestions zsh-syntax-highlighting web-search)
+source $ZSH/oh-my-zsh.sh
+
+# Powerlevel10k config
+[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+
+# mise (replaces nvm, pyenv, rvm)
+export PATH="$HOME/.local/bin:$PATH"
+eval "$(mise activate zsh)"
+
+# Go
+export PATH=$PATH:$(go env GOPATH)/bin 2>/dev/null || true
+
+# Rust
+[[ -f "$HOME/.cargo/env" ]] && source "$HOME/.cargo/env"
+
+# fzf — fuzzy finder (ctrl+r history, ctrl+t file search, alt+c cd)
+command -v fzf &>/dev/null && eval "$(fzf --zsh)"
+
+# zoxide — smart cd (use 'z' instead of 'cd')
+command -v zoxide &>/dev/null && eval "$(zoxide init zsh)"
+
+# direnv — per-directory env vars
+command -v direnv &>/dev/null && eval "$(direnv hook zsh)"
+
+# eza — better ls
+if command -v eza &>/dev/null; then
+  alias ls="eza --icons"
+  alias ll="eza -la --icons --git"
+  alias lt="eza --tree --icons"
+fi
+
+# bat — better cat
+command -v bat &>/dev/null && alias cat="bat"
+
+# lazygit
+command -v lazygit &>/dev/null && alias lg="lazygit"
+
+# tmux: auto-attach when connecting via AWS SSM
+if [ -n "$SSM_SESSION_ID" ] && [ -z "$TMUX" ]; then
+  tmux attach -t main || tmux new -s main
+fi

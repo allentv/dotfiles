@@ -1,0 +1,5 @@
+# Pre-filled chezmoi data for smoke tests — skips all interactive prompts.
+# Keep in sync with .chezmoi.yaml.tmpl data keys.
+data:
+  installDocker: false
+  installKubectl: false

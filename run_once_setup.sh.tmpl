@@ -1,0 +1,214 @@
+#!/bin/bash
+# Bootstrap setup — runs once per machine via chezmoi
+# Parallel where possible; sequential where dependencies require it
+
+set -euo pipefail
+
+LOG_DIR=$(mktemp -d /tmp/dotfiles-setup-XXXXXX)
+
+
+# ── Logging ────────────────────────────────────────────────────────────────
+
+BOLD='\033[1m'; GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[0;33m'; RESET='\033[0m'
+
+log()  { echo -e "${BOLD}[setup]${RESET} $*"; }
+ok()   { echo -e "${GREEN}  ✓ $*${RESET}"; }
+fail() { echo -e "${RED}  ✗ $*${RESET}"; }
+info() { echo -e "${YELLOW}  → $*${RESET}"; }
+
+# ── Cleanup: kill all background jobs on exit (Ctrl+C, error, or normal) ────
+
+cleanup() {
+  local jobs
+  jobs=$(jobs -p 2>/dev/null) || true
+  if [[ -n "$jobs" ]]; then
+    log "Cleaning up background jobs..."
+    kill $jobs 2>/dev/null || true
+    wait 2>/dev/null || true
+  fi
+  # Preserve logs on failure for debugging; remove on clean exit
+  [[ ${SETUP_FAILED:-0} -eq 0 ]] && rm -rf "$LOG_DIR" || \
+    log "Logs preserved at $LOG_DIR for debugging"
+}
+trap cleanup EXIT INT TERM
+
+# ── Retry wrapper — for network-dependent steps ────────────────────────────
+# Usage: with_retry <max_attempts> <delay_secs> <fn> [args...]
+
+with_retry() {
+  local max=$1 delay=$2; shift 2
+  local attempt=1
+  until "$@"; do
+    if (( attempt >= max )); then
+      echo "Failed after $max attempts: $*"
+      return 1
+    fi
+    echo "Attempt $attempt failed, retrying in ${delay}s..."
+    sleep "$delay"
+    (( attempt++ ))
+  done
+}
+
+# ── Package manager detection ───────────────────────────────────────────────
+
+detect_pkg_manager() {
+  if [[ "$(uname -s)" == "Darwin" ]]; then echo "brew"
+  elif command -v dnf     &>/dev/null; then echo "dnf"    # Amazon Linux 2023, Fedora, RHEL 8+
+  elif command -v apt-get &>/dev/null; then echo "apt"    # Ubuntu, Debian
+  elif command -v yum     &>/dev/null; then echo "yum"    # Amazon Linux 2, CentOS 7
+  else echo "unknown"
+  fi
+}
+
+PKG_MANAGER=$(detect_pkg_manager)
+
+pkg_install() {
+  case "$PKG_MANAGER" in
+    brew) brew install "$@" ;;
+    apt)  sudo apt-get install -y "$@" ;;
+    dnf)  sudo dnf install -y "$@" ;;
+    yum)  sudo yum install -y "$@" ;;
+    *)    echo "No supported package manager — install $* manually"; return 1 ;;
+  esac
+}
+
+# ── Parallel stage runner ───────────────────────────────────────────────────
+# Runs all given functions in parallel, waits for all, reports results.
+# On any failure: prints that job's log, kills remaining siblings, exits.
+
+run_stage() {
+  local stage_name=$1; shift
+  local -a fns=("$@")
+  local -a pids=()
+
+  log "Stage: ${stage_name}"
+
+  for fn in "${fns[@]}"; do
+    info "$fn"
+    "$fn" > "$LOG_DIR/$fn.log" 2>&1 &
+    pids+=($!)
+  done
+
+  local failed=0
+  for i in "${!pids[@]}"; do
+    local fn="${fns[$i]}"
+    if wait "${pids[$i]}"; then
+      ok "$fn"
+    else
+      fail "$fn"
+      echo "── $fn output ──────────────────────────"
+      cat "$LOG_DIR/$fn.log"
+      echo "────────────────────────────────────────"
+      failed=1
+    fi
+  done
+
+  if [[ $failed -ne 0 ]]; then
+    SETUP_FAILED=1
+    log "Stage '${stage_name}' had failures. Aborting."
+    exit 1
+  fi
+}
+
+# ── Install functions ────────────────────────────────────────────────────────
+
+install_mise() {
+  command -v mise &>/dev/null && return
+  with_retry 3 5 curl -fsSL https://mise.run | sh
+  SHELL_RC="$HOME/.zshrc"
+  [[ -f "$HOME/.bashrc" && ! -f "$HOME/.zshrc" ]] && SHELL_RC="$HOME/.bashrc"
+  grep -q 'mise activate' "$SHELL_RC" 2>/dev/null || \
+    echo 'eval "$(~/.local/bin/mise activate zsh)"' >> "$SHELL_RC"
+}
+
+install_languages() {
+  export PATH="$HOME/.local/bin:$PATH"
+  eval "$(mise activate bash)" 2>/dev/null || true
+  with_retry 3 10 mise install
+}
+
+install_system_packages() {
+  [[ "$PKG_MANAGER" == "apt" ]] && with_retry 3 5 sudo apt-get update -qq
+  [[ "$PKG_MANAGER" == "dnf" ]] && { sudo dnf check-update -q || true; }
+
+  for pkg in tmux zsh tree htop; do
+    command -v "$pkg" &>/dev/null || with_retry 3 5 pkg_install "$pkg"
+  done
+}
+
+install_ohmyzsh() {
+  local ZSH_CUSTOM="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}"
+
+  # Clone directly instead of curl|sh — more transparent and avoids executing
+  # a remote script. This is what the official installer does under the hood.
+  if [[ ! -d "$HOME/.oh-my-zsh" ]]; then
+    with_retry 3 5 git clone --depth=1 \
+      https://github.com/ohmyzsh/ohmyzsh.git "$HOME/.oh-my-zsh"
+  fi
+
+  [[ -d "$ZSH_CUSTOM/themes/powerlevel10k" ]] || \
+    with_retry 3 5 git clone --depth=1 \
+      https://github.com/romkatv/powerlevel10k.git "$ZSH_CUSTOM/themes/powerlevel10k"
+
+  [[ -d "$ZSH_CUSTOM/plugins/zsh-autosuggestions" ]] || \
+    with_retry 3 5 git clone \
+      https://github.com/zsh-users/zsh-autosuggestions "$ZSH_CUSTOM/plugins/zsh-autosuggestions"
+
+  [[ -d "$ZSH_CUSTOM/plugins/zsh-syntax-highlighting" ]] || \
+    with_retry 3 5 git clone \
+      https://github.com/zsh-users/zsh-syntax-highlighting "$ZSH_CUSTOM/plugins/zsh-syntax-highlighting"
+
+  [[ "$SHELL" == "$(which zsh)" ]] || chsh -s "$(which zsh)"
+}
+
+install_claude() {
+  export PATH="$HOME/.local/bin:$PATH"
+  eval "$(mise activate bash)" 2>/dev/null || true
+  command -v claude &>/dev/null && return
+  with_retry 3 5 npm install -g @anthropic-ai/claude-code
+}
+
+{{ if .installDocker -}}
+install_docker() {
+  command -v docker &>/dev/null && return
+  case "$(uname -s)" in
+    Linux)
+      with_retry 3 5 bash -c "curl -fsSL https://get.docker.com | sh"
+      sudo usermod -aG docker "$USER"
+      ;;
+    Darwin)
+      brew install docker colima
+      colima start
+      ;;
+  esac
+}
+{{- end }}
+
+{{ if .installKubectl -}}
+install_kubectl() {
+  export PATH="$HOME/.local/bin:$PATH"
+  eval "$(mise activate bash)" 2>/dev/null || true
+  command -v kubectl &>/dev/null && return
+  with_retry 3 5 mise use --global kubectl@latest
+}
+{{- end }}
+
+# ── Execution ────────────────────────────────────────────────────────────────
+
+log "Starting setup (logs: $LOG_DIR)"
+
+# Stage 1 — sequential: everything depends on mise
+log "Stage: mise (sequential)"
+install_mise && ok "mise" || { SETUP_FAILED=1; fail "mise"; exit 1; }
+
+# Stage 2 — parallel: languages + system packages are independent
+STAGE2_JOBS=(install_languages install_system_packages)
+{{ if .installDocker }}STAGE2_JOBS+=(install_docker){{ end }}
+run_stage "parallel" "${STAGE2_JOBS[@]}"
+
+# Stage 3 — parallel: all depend on stage 2 completing
+STAGE3_JOBS=(install_claude install_ohmyzsh)
+{{ if .installKubectl }}STAGE3_JOBS+=(install_kubectl){{ end }}
+run_stage "parallel" "${STAGE3_JOBS[@]}"
+
+log "Setup complete. Start a new shell session to apply changes."

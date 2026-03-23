@@ -1,0 +1,8 @@
+{{- /* ---- Optional installs: add new tools here ---- */}}
+{{- $installDocker := promptBoolOnce . "installDocker" "Install Docker?" -}}
+{{- $installKubectl := promptBoolOnce . "installKubectl" "Install kubectl?" -}}
+
+data:
+  # Optional installs — add new tools following the same pattern
+  installDocker: {{ $installDocker }}
+  installKubectl: {{ $installKubectl }}
