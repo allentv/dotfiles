@@ -1,0 +1,6 @@
+# chezmoi state (local to each machine)
+.chezmoi.yaml
+
+# secrets
+*.local
+.env
