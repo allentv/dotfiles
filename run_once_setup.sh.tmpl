@@ -168,6 +168,19 @@ install_claude() {
   with_retry 3 5 npm install -g @anthropic-ai/claude-code
 }
 
+install_omp() {
+  export PATH="$HOME/.local/bin:$PATH"
+  eval "$(mise activate bash)" 2>/dev/null || true
+  command -v omp &>/dev/null && return
+  with_retry 3 10 mise use -g "github:can1357/oh-my-pi"
+
+  # Build browser-mcp tool (source deployed by chezmoi, deps installed here)
+  local MCP_DIR="$HOME/.omp/tools/browser-mcp"
+  if [[ -d "$MCP_DIR" && ! -d "$MCP_DIR/node_modules" ]]; then
+    (cd "$MCP_DIR" && npm install --ignore-scripts && npx playwright install chromium && npm run build)
+  fi
+}
+
 {{ if .installDocker -}}
 install_docker() {
   command -v docker &>/dev/null && return
@@ -207,7 +220,7 @@ STAGE2_JOBS=(install_languages install_system_packages)
 run_stage "parallel" "${STAGE2_JOBS[@]}"
 
 # Stage 3 — parallel: all depend on stage 2 completing
-STAGE3_JOBS=(install_claude install_ohmyzsh)
+STAGE3_JOBS=(install_claude install_omp install_ohmyzsh)
 {{ if .installKubectl }}STAGE3_JOBS+=(install_kubectl){{ end }}
 run_stage "parallel" "${STAGE3_JOBS[@]}"
 

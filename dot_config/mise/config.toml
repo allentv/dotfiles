@@ -11,6 +11,9 @@ bun = "latest"
 pnpm = "latest"
 uv = "latest"        # fast Python package manager
 
+# AI tooling
+"github:can1357/oh-my-pi" = "latest"  # omp coding harness
+
 # Shell utilities
 bat = "latest"       # better cat
 delta = "latest"     # better git diff

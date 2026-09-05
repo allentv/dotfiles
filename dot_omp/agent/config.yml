@@ -1,0 +1,8 @@
+setupVersion: 2
+modelRoles:
+  default: openrouter/xiaomi/mimo-v2.5:medium
+hideThinkingBlock: false
+proseOnlyThinking: false
+memory:
+  backend: local
+extendedContext: true

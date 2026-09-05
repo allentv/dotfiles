@@ -4,3 +4,7 @@
 # secrets
 *.local
 .env
+
+# browser-mcp build artifacts
+dot_omp/tools/browser-mcp/node_modules/
+dot_omp/tools/browser-mcp/dist/
